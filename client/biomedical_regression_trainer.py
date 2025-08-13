@@ -1,47 +1,508 @@
+"""
+Statistical biomedical analysis trainer for FedBlock federated learning.
+Uses classical statistical methods instead of deep learning for lightweight,
+mobile-friendly biomedical data analysis.
+"""
+
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.linear_model import (
+    LinearRegression, LogisticRegression, Ridge, Lasso, ElasticNet
+)
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import (
+    mean_squared_error, r2_score, mean_absolute_error,
+    accuracy_score, classification_report, confusion_matrix
+)
+from sklearn.model_selection import cross_val_score
+import scipy.stats as stats
+from scipy.stats import pearsonr, spearmanr, chi2_contingency
 import logging
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import json
 import os
+import pickle
+from datetime import datetime
 
 from .config import GLOBAL_TMP_PATH, GLOBAL_DATASETS
 
 
-class BiomedicalRegressionNet(nn.Module):
-    """Neural network for biomedical regression tasks."""
+class StatisticalBiomedicalAnalyzer:
+    """
+    Statistical analyzer for biomedical data using classical machine learning
+    and statistical methods. Lightweight and mobile-friendly.
+    """
     
-    def __init__(self, input_dim: int, hidden_dims: List[int] = [64, 32], 
-                 output_dim: int = 1, dropout_rate: float = 0.2):
-        super(BiomedicalRegressionNet, self).__init__()
+    def __init__(self, model_params, client_config):
+        print('Initializing StatisticalBiomedicalAnalyzer...')
+        self.client_config = client_config
+        self.model_params = model_params
+        self.models = {}
+        self.scalers = {}
+        self.feature_importance = {}
         
-        layers = []
-        prev_dim = input_dim
+        # Configuration
+        self.analysis_type = getattr(client_config, 'analysis_type', 'regression')
+        self.model_type = getattr(client_config, 'model_type', 'linear_regression')
         
-        for hidden_dim in hidden_dims:
-            layers.extend([
-                nn.Linear(prev_dim, hidden_dim),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_dim),
-                nn.Dropout(dropout_rate)
-            ])
-            prev_dim = hidden_dim
+        # Data paths
+        current_directory = os.path.dirname(os.path.realpath(__file__))
+        self.data_folder = current_directory + GLOBAL_TMP_PATH + '/biomedical_data/'
+        
+        # Ensure data folder exists
+        os.makedirs(self.data_folder, exist_ok=True)
+        
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
+        
+    def train_model(self) -> Dict:
+        """
+        Train statistical models for biomedical analysis.
+        Returns model parameters and statistical metrics.
+        """
+        try:
+            # Load and preprocess data
+            data = self._load_biomedical_data()
             
-        layers.append(nn.Linear(prev_dim, output_dim))
+            # Perform statistical analysis
+            results = {}
+            
+            if self.analysis_type == 'regression':
+                results = self._perform_regression_analysis(data)
+            elif self.analysis_type == 'classification':
+                results = self._perform_classification_analysis(data)
+            elif self.analysis_type == 'survival':
+                results = self._perform_survival_analysis(data)
+            elif self.analysis_type == 'correlation':
+                results = self._perform_correlation_analysis(data)
+            else:
+                results = self._perform_descriptive_analysis(data)
+            
+            return {
+                'model_params': self._serialize_models(),
+                'statistical_results': results,
+                'analysis_type': self.analysis_type,
+                'model_type': self.model_type,
+                'feature_importance': self.feature_importance,
+                'data_summary': self._get_data_summary(data)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in statistical analysis: {str(e)}")
+            raise
+    
+    def _load_biomedical_data(self) -> pd.DataFrame:
+        """Load or generate biomedical data for analysis."""
         
-        self.network = nn.Sequential(*layers)
+        # Generate synthetic biomedical data for demonstration
+        data = self._generate_synthetic_biomedical_data()
         
-    def forward(self, x):
-        return self.network(x)
-
-
-class BiomedicalRegressionTrainer:
+        self.logger.info(f'Loaded biomedical dataset with {len(data)} samples')
+        return data
+    
+    def _perform_regression_analysis(self, data: pd.DataFrame) -> Dict:
+        """Perform regression analysis for continuous biomedical outcomes."""
+        
+        # Prepare features and target
+        feature_columns = [col for col in data.columns if col != 'target']
+        X = data[feature_columns]
+        y = data['target']
+        
+        # Scale features
+        scaler = RobustScaler()
+        X_scaled = scaler.fit_transform(X)
+        self.scalers['features'] = scaler
+        
+        # Train multiple regression models
+        models = {
+            'linear': LinearRegression(),
+            'ridge': Ridge(alpha=1.0),
+            'lasso': Lasso(alpha=0.1),
+            'elastic_net': ElasticNet(alpha=0.1, l1_ratio=0.5),
+            'random_forest': RandomForestRegressor(n_estimators=100, random_state=42)
+        }
+        
+        results = {}
+        
+        for name, model in models.items():
+            try:
+                # Fit model
+                if name == 'random_forest':
+                    model.fit(X, y)  # Random Forest can handle unscaled data
+                    predictions = model.predict(X)
+                    
+                    # Feature importance
+                    self.feature_importance[name] = dict(zip(
+                        feature_columns, model.feature_importances_
+                    ))
+                else:
+                    model.fit(X_scaled, y)
+                    predictions = model.predict(X_scaled)
+                    
+                    # Feature importance (coefficients)
+                    if hasattr(model, 'coef_'):
+                        self.feature_importance[name] = dict(zip(
+                            feature_columns, np.abs(model.coef_)
+                        ))
+                
+                # Calculate metrics
+                mse = mean_squared_error(y, predictions)
+                mae = mean_absolute_error(y, predictions)
+                r2 = r2_score(y, predictions)
+                
+                # Cross-validation
+                cv_scores = cross_val_score(model, X_scaled if name != 'random_forest' else X, 
+                                          y, cv=5, scoring='r2')
+                
+                results[name] = {
+                    'mse': float(mse),
+                    'mae': float(mae),
+                    'r2': float(r2),
+                    'cv_mean_r2': float(np.mean(cv_scores)),
+                    'cv_std_r2': float(np.std(cv_scores))
+                }
+                
+                # Store model
+                self.models[name] = model
+                
+            except Exception as e:
+                self.logger.error(f"Error training {name} model: {str(e)}")
+                results[name] = {'error': str(e)}
+        
+        # Statistical tests
+        results['statistical_tests'] = self._perform_regression_tests(X, y)
+        
+        return results
+    
+    def _perform_classification_analysis(self, data: pd.DataFrame) -> Dict:
+        """Perform classification analysis for categorical biomedical outcomes."""
+        
+        # Convert target to binary classification for demonstration
+        data['target_binary'] = (data['target'] > data['target'].median()).astype(int)
+        
+        feature_columns = [col for col in data.columns if col not in ['target', 'target_binary']]
+        X = data[feature_columns]
+        y = data['target_binary']
+        
+        # Scale features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        self.scalers['features'] = scaler
+        
+        # Train classification models
+        models = {
+            'logistic': LogisticRegression(random_state=42, max_iter=1000),
+            'random_forest': RandomForestClassifier(n_estimators=100, random_state=42)
+        }
+        
+        results = {}
+        
+        for name, model in models.items():
+            try:
+                # Fit model
+                if name == 'random_forest':
+                    model.fit(X, y)
+                    predictions = model.predict(X)
+                    probabilities = model.predict_proba(X)[:, 1]
+                    
+                    # Feature importance
+                    self.feature_importance[name] = dict(zip(
+                        feature_columns, model.feature_importances_
+                    ))
+                else:
+                    model.fit(X_scaled, y)
+                    predictions = model.predict(X_scaled)
+                    probabilities = model.predict_proba(X_scaled)[:, 1]
+                    
+                    # Feature importance (coefficients)
+                    if hasattr(model, 'coef_'):
+                        self.feature_importance[name] = dict(zip(
+                            feature_columns, np.abs(model.coef_[0])
+                        ))
+                
+                # Calculate metrics
+                accuracy = accuracy_score(y, predictions)
+                
+                # Cross-validation
+                cv_scores = cross_val_score(model, X_scaled if name != 'random_forest' else X, 
+                                          y, cv=5, scoring='accuracy')
+                
+                results[name] = {
+                    'accuracy': float(accuracy),
+                    'cv_mean_accuracy': float(np.mean(cv_scores)),
+                    'cv_std_accuracy': float(np.std(cv_scores)),
+                    'classification_report': classification_report(y, predictions, output_dict=True),
+                    'confusion_matrix': confusion_matrix(y, predictions).tolist()
+                }
+                
+                # Store model
+                self.models[name] = model
+                
+            except Exception as e:
+                self.logger.error(f"Error training {name} model: {str(e)}")
+                results[name] = {'error': str(e)}
+        
+        return results
+    
+    def _perform_survival_analysis(self, data: pd.DataFrame) -> Dict:
+        """Perform basic survival analysis using statistical methods."""
+        
+        # Simulate survival data
+        data['time_to_event'] = np.random.exponential(scale=365, size=len(data))  # Days
+        data['event_occurred'] = np.random.binomial(1, 0.3, size=len(data))  # 30% event rate
+        
+        results = {}
+        
+        # Kaplan-Meier estimation (simplified)
+        times = np.sort(data['time_to_event'].unique())
+        survival_probs = []
+        
+        for t in times:
+            at_risk = len(data[data['time_to_event'] >= t])
+            events = len(data[(data['time_to_event'] == t) & (data['event_occurred'] == 1)])
+            if at_risk > 0:
+                surv_prob = 1 - (events / at_risk)
+                survival_probs.append(surv_prob)
+            else:
+                survival_probs.append(1.0)
+        
+        results['kaplan_meier'] = {
+            'times': times.tolist(),
+            'survival_probabilities': survival_probs,
+            'median_survival_time': float(np.median(data['time_to_event']))
+        }
+        
+        # Log-rank test simulation (simplified)
+        # Split into two groups based on a key variable
+        key_variable = data.columns[0]  # Use first feature
+        median_split = data[key_variable].median()
+        group1 = data[data[key_variable] <= median_split]
+        group2 = data[data[key_variable] > median_split]
+        
+        # Simplified log-rank test
+        group1_events = group1['event_occurred'].sum()
+        group2_events = group2['event_occurred'].sum()
+        total_events = group1_events + group2_events
+        
+        if total_events > 0:
+            expected1 = len(group1) * total_events / len(data)
+            chi2_stat = (group1_events - expected1) ** 2 / expected1
+            p_value = 1 - stats.chi2.cdf(chi2_stat, df=1)
+            
+            results['log_rank_test'] = {
+                'chi2_statistic': float(chi2_stat),
+                'p_value': float(p_value),
+                'group1_events': int(group1_events),
+                'group2_events': int(group2_events)
+            }
+        
+        return results
+    
+    def _perform_correlation_analysis(self, data: pd.DataFrame) -> Dict:
+        """Perform correlation and association analysis."""
+        
+        # Numeric correlations
+        numeric_columns = data.select_dtypes(include=[np.number]).columns
+        correlation_matrix = data[numeric_columns].corr()
+        
+        results = {
+            'correlation_matrix': correlation_matrix.to_dict(),
+            'significant_correlations': []
+        }
+        
+        # Find significant correlations
+        for i, col1 in enumerate(numeric_columns):
+            for j, col2 in enumerate(numeric_columns):
+                if i < j:  # Avoid duplicates
+                    corr_coef, p_value = pearsonr(data[col1], data[col2])
+                    if p_value < 0.05:  # Significant correlation
+                        results['significant_correlations'].append({
+                            'variable1': col1,
+                            'variable2': col2,
+                            'correlation': float(corr_coef),
+                            'p_value': float(p_value)
+                        })
+        
+        # Spearman correlation for non-parametric relationships
+        spearman_matrix = data[numeric_columns].corr(method='spearman')
+        results['spearman_correlation'] = spearman_matrix.to_dict()
+        
+        return results
+    
+    def _perform_descriptive_analysis(self, data: pd.DataFrame) -> Dict:
+        """Perform descriptive statistical analysis."""
+        
+        results = {
+            'descriptive_statistics': data.describe().to_dict(),
+            'missing_values': data.isnull().sum().to_dict(),
+            'data_types': data.dtypes.astype(str).to_dict()
+        }
+        
+        # Statistical tests for normality
+        numeric_columns = data.select_dtypes(include=[np.number]).columns
+        normality_tests = {}
+        
+        for col in numeric_columns:
+            if len(data[col].dropna()) > 3:  # Need at least 3 observations
+                try:
+                    statistic, p_value = stats.shapiro(data[col].dropna())
+                    normality_tests[col] = {
+                        'shapiro_statistic': float(statistic),
+                        'shapiro_p_value': float(p_value),
+                        'is_normal': p_value > 0.05
+                    }
+                except:
+                    normality_tests[col] = {'error': 'Could not perform normality test'}
+        
+        results['normality_tests'] = normality_tests
+        
+        return results
+    
+    def _perform_regression_tests(self, X: pd.DataFrame, y: pd.Series) -> Dict:
+        """Perform statistical tests related to regression."""
+        
+        tests = {}
+        
+        # Test for multicollinearity (VIF)
+        try:
+            from statsmodels.stats.outliers_influence import variance_inflation_factor
+            vif_data = pd.DataFrame()
+            vif_data["Feature"] = X.columns
+            vif_data["VIF"] = [variance_inflation_factor(X.values, i) 
+                              for i in range(len(X.columns))]
+            tests['vif'] = vif_data.to_dict('records')
+        except:
+            tests['vif'] = {'error': 'Could not calculate VIF'}
+        
+        # Test for heteroscedasticity (Breusch-Pagan test)
+        try:
+            from statsmodels.stats.diagnostic import het_breuschpagan
+            model = LinearRegression().fit(X, y)
+            predictions = model.predict(X)
+            residuals = y - predictions
+            
+            # Simplified heteroscedasticity test
+            residuals_squared = residuals ** 2
+            corr_coef, p_value = pearsonr(predictions, residuals_squared)
+            
+            tests['heteroscedasticity'] = {
+                'correlation_coef': float(corr_coef),
+                'p_value': float(p_value),
+                'heteroscedastic': p_value < 0.05
+            }
+        except:
+            tests['heteroscedasticity'] = {'error': 'Could not perform test'}
+        
+        return tests
+    
+    def _generate_synthetic_biomedical_data(self) -> pd.DataFrame:
+        """Generate synthetic biomedical data for statistical analysis."""
+        
+        np.random.seed(42)  # For reproducibility
+        n_samples = getattr(self.client_config, 'dataset_size', 1000)
+        
+        # Generate realistic biomedical data with statistical relationships
+        data = {
+            # Demographics
+            'age': np.random.normal(45, 15, n_samples),
+            'gender': np.random.binomial(1, 0.5, n_samples),  # 0=Female, 1=Male
+            
+            # Vital signs
+            'systolic_bp': np.random.normal(120, 20, n_samples),
+            'diastolic_bp': np.random.normal(80, 15, n_samples),
+            'heart_rate': np.random.normal(70, 12, n_samples),
+            'bmi': np.random.normal(25, 5, n_samples),
+            
+            # Lab values
+            'glucose': np.random.normal(100, 30, n_samples),
+            'cholesterol': np.random.normal(200, 50, n_samples),
+            'hemoglobin': np.random.normal(14, 2, n_samples),
+            
+            # Lifestyle factors
+            'smoking': np.random.binomial(1, 0.2, n_samples),
+            'exercise_hours': np.random.exponential(3, n_samples),
+            
+            # Medical history
+            'diabetes': np.random.binomial(1, 0.1, n_samples),
+            'hypertension': np.random.binomial(1, 0.15, n_samples),
+        }
+        
+        df = pd.DataFrame(data)
+        
+        # Ensure realistic ranges
+        df['age'] = np.clip(df['age'], 18, 100)
+        df['systolic_bp'] = np.clip(df['systolic_bp'], 90, 200)
+        df['diastolic_bp'] = np.clip(df['diastolic_bp'], 60, 120)
+        df['heart_rate'] = np.clip(df['heart_rate'], 50, 120)
+        df['bmi'] = np.clip(df['bmi'], 15, 45)
+        df['glucose'] = np.clip(df['glucose'], 70, 300)
+        df['exercise_hours'] = np.clip(df['exercise_hours'], 0, 20)
+        
+        # Create target with realistic statistical relationships
+        df['target'] = (
+            0.3 * df['age'] +
+            0.5 * df['systolic_bp'] +
+            0.2 * df['bmi'] +
+            0.1 * df['glucose'] +
+            5.0 * df['smoking'] +
+            3.0 * df['diabetes'] +
+            2.0 * df['hypertension'] +
+            np.random.normal(0, 5, n_samples)  # Add noise
+        )
+        
+        # Normalize target to reasonable range (e.g., risk score 0-100)
+        df['target'] = ((df['target'] - df['target'].min()) / 
+                       (df['target'].max() - df['target'].min()) * 100)
+        
+        self.logger.info(f'Generated synthetic biomedical dataset with {len(df)} samples')
+        return df
+    
+    def _serialize_models(self) -> Dict:
+        """Serialize trained models for federated learning."""
+        
+        serialized = {}
+        
+        for name, model in self.models.items():
+            try:
+                # For scikit-learn models, extract key parameters
+                if hasattr(model, 'coef_'):
+                    serialized[name] = {
+                        'type': type(model).__name__,
+                        'coefficients': model.coef_.tolist() if hasattr(model.coef_, 'tolist') else model.coef_,
+                        'intercept': float(model.intercept_) if hasattr(model, 'intercept_') else None
+                    }
+                elif hasattr(model, 'feature_importances_'):
+                    serialized[name] = {
+                        'type': type(model).__name__,
+                        'feature_importances': model.feature_importances_.tolist(),
+                        'n_estimators': getattr(model, 'n_estimators', None)
+                    }
+                else:
+                    serialized[name] = {
+                        'type': type(model).__name__,
+                        'params': model.get_params()
+                    }
+            except Exception as e:
+                self.logger.error(f"Error serializing model {name}: {str(e)}")
+                serialized[name] = {'error': str(e)}
+        
+        return serialized
+    
+    def _get_data_summary(self, data: pd.DataFrame) -> Dict:
+        """Get summary statistics of the dataset."""
+        
+        return {
+            'n_samples': len(data),
+            'n_features': len(data.columns) - 1,  # Exclude target
+            'feature_names': [col for col in data.columns if col != 'target'],
+            'target_stats': {
+                'mean': float(data['target'].mean()),
+                'std': float(data['target'].std()),
+                'min': float(data['target'].min()),
+                'max': float(data['target'].max())
+            }
+        }
     """
     Federated learning trainer for biomedical regression tasks.
     Supports various health-related prediction tasks including:
