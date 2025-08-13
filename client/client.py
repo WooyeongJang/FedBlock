@@ -11,6 +11,9 @@ from .utils import model_params_to_request_params
 from .mnist_model_trainer import MnistModelTrainer
 from .chest_x_ray_model_trainer import ChestXRayModelTrainer
 from .gossip_mnist_model_trainer import GossipMnistModelTrainer
+from .biomedical_regression_trainer import BiomedicalRegressionTrainer
+from .wearable_analytics_trainer import WearableAnalyticsTrainer
+from .medical_image_biomarker_trainer import MedicalImageBiomarkerTrainer
 from .client_status import ClientStatus
 from .config import DEFAULT_SERVER_URL
 from .training_type import TrainingType
@@ -52,6 +55,18 @@ class Client:
                 client_model_trainer = GossipMnistModelTrainer(self.model_params, federated_learning_config, client_id, round, round_size, clients)
             elif self.training_type == TrainingType.CHEST_X_RAY_PNEUMONIA:
                 client_model_trainer = ChestXRayModelTrainer(model_params, federated_learning_config)
+            elif self.training_type == TrainingType.BIOMEDICAL_REGRESSION:
+                client_model_trainer = BiomedicalRegressionTrainer(model_params, federated_learning_config)
+            elif self.training_type == TrainingType.WEARABLE_ANALYTICS:
+                client_model_trainer = WearableAnalyticsTrainer(model_params, federated_learning_config)
+            elif self.training_type == TrainingType.MEDICAL_IMAGE_BIOMARKER:
+                client_model_trainer = MedicalImageBiomarkerTrainer(model_params, federated_learning_config)
+            elif self.training_type == TrainingType.CARDIOVASCULAR_RISK:
+                # Use biomedical regression trainer with cardiovascular-specific config
+                client_model_trainer = BiomedicalRegressionTrainer(model_params, federated_learning_config)
+            elif self.training_type == TrainingType.LAB_VALUE_PREDICTION:
+                # Use biomedical regression trainer with lab value-specific config
+                client_model_trainer = BiomedicalRegressionTrainer(model_params, federated_learning_config)
             else:
                 raise ValueError('Unsupported training type', training_type)
 

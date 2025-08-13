@@ -1,0 +1,31 @@
+{
+  "name": "fedblock-blockchain",
+  "version": "1.0.0",
+  "description": "Blockchain audit logging for FedBlock federated learning framework",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
+    "deploy": "npx hardhat run scripts/deploy.js",
+    "deploy:localhost": "npx hardhat run scripts/deploy.js --network localhost",
+    "node": "npx hardhat node",
+    "clean": "npx hardhat clean"
+  },
+  "keywords": [
+    "blockchain",
+    "federated-learning",
+    "audit",
+    "ethereum",
+    "smart-contracts"
+  ],
+  "author": "FedBlock Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "ethers": "^6.8.0"
+  }
+}
