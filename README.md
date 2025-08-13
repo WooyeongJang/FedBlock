@@ -40,46 +40,114 @@ FedBlock integrates blockchain technology to provide immutable audit trails for 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8+
-- Node.js 16+
+- Python 3.8+ 
+- Node.js 16+ (for blockchain features)
+- Android Studio (for mobile client development)
 - Docker (optional)
-- Ethereum-compatible blockchain network
 
-### Setup Blockchain Environment
-1. Install Hardhat for smart contract development:
+### Automated Setup
+
+For **Windows**:
+```bash
+# Clone the repository
+git clone https://github.com/your-org/fedblock.git
+cd fedblock
+
+# Run the setup script
+setup_biomedical.bat
+```
+
+For **Linux/MacOS**:
+```bash
+# Clone the repository  
+git clone https://github.com/your-org/fedblock.git
+cd fedblock
+
+# Make setup script executable and run
+chmod +x setup_biomedical.sh
+./setup_biomedical.sh
+```
+
+### Manual Setup
+
+1. **Setup Python Environment**:
+```bash
+python -m venv fedblock_env
+source fedblock_env/bin/activate  # On Windows: fedblock_env\Scripts\activate
+pip install -r requirements.txt
+```
+
+2. **Setup Blockchain Environment** (optional):
 ```bash
 cd blockchain
 npm install
-```
-
-2. Deploy audit logging contracts:
-```bash
-npx hardhat node
+npx hardhat node &
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
-### Start Federated Learning Network
-1. Start the orchestration server:
+3. **Configure Environment**:
 ```bash
-cd server
-pip install -r requirements.txt
-flask run
+cp .env.template .env
+# Edit .env with your configuration
 ```
 
-2. Launch Python client nodes:
+### Starting the Platform
+
+**Quick Start**:
 ```bash
+# Windows
+start_fedblock.bat
+
+# Linux/MacOS  
+./start_fedblock.sh
+```
+
+**Manual Start**:
+```bash
+# Start the orchestration server
+cd server
+python -m flask run --host=localhost --port=5000
+
+# In another terminal, start a Python client
 cd client
 export CLIENT_URL=http://127.0.0.1:5001
 export SERVER_URL=http://127.0.0.1:5000
-flask run --port 5001
+python -m flask run --port 5001
 ```
 
-3. Build and run Android client:
+### Running Biomedical Analysis
+
+Once the platform is running, you can start federated learning for various biomedical tasks:
+
+```python
+# Example: Start cardiovascular risk assessment
+import requests
+
+server_url = "http://localhost:5000"
+requests.post(f"{server_url}/training", json={
+    "training_type": "CARDIOVASCULAR_RISK",
+    "epochs": 50,
+    "learning_rate": 0.001
+})
+```
+
+### Android Client Setup
+
+1. **Open Android Studio**:
 ```bash
 cd client-android
-./gradlew assembleDebug
-# Install the APK on your Android device
+# Open this directory in Android Studio
 ```
+
+2. **Build and Install**:
+```bash
+./gradlew assembleDebug
+# Install the generated APK on your Android device
+```
+
+3. **Configure Connection**:
+   - Set server URL in the app settings
+   - Ensure your device is on the same network as the server
 
 ## 🩺 Supported Biomedical Analysis Types
 
